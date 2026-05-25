@@ -1,0 +1,13 @@
+[package]
+name = "llm-message-dedup"
+version = "0.1.0"
+edition = "2021"
+description = "Remove duplicate or near-duplicate messages from LLM conversation history"
+license = "MIT"
+repository = "https://github.com/MukundaKatta/llm-message-dedup-rs"
+keywords = ["llm", "messages", "dedup", "conversation", "agent"]
+categories = ["text-processing"]
+exclude = ["target/*", ".github/*", "*.log"]
+
+[dependencies]
+serde_json = "1"
