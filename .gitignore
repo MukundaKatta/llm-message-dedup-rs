@@ -1,0 +1,11 @@
+# Rust build artifacts
+/target
+
+# Cargo.lock is not committed for library crates
+/Cargo.lock
+
+# Backup files
+**/*.rs.bk
+
+# Local logs
+*.log
