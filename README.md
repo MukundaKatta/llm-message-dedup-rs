@@ -124,7 +124,11 @@ assert_eq!(duplicate_count(&msgs), 1);
 ## Notes and limitations
 
 - Messages with no `role` or no `content` are handled gracefully (missing
-  fields are treated as empty for keying purposes).
+  fields are treated as JSON `null` for keying purposes).
+- Comparison is **type-aware**: the string content `"5"` and the number
+  content `5` are treated as distinct messages, as are `"true"`/`true` and
+  `"null"`/`null`. Identity keys are derived from the canonical JSON of the
+  `role`/`content` pair, so distinct messages never collide.
 - "Near-duplicate" matching is currently exact: there is no fuzzy/semantic
   comparison. Normalize your content (trim, lowercase, etc.) beforehand if you
   need looser matching.

@@ -54,14 +54,29 @@ pub enum DedupScope {
     Global,
 }
 
+/// Build a canonical, collision-free identity key for a message.
+///
+/// The key is the JSON serialization of the two-element array
+/// `[role, content]`. Encoding the pair as JSON (rather than concatenating the
+/// two fields with a delimiter) avoids two classes of false matches:
+///
+/// * **Type collisions** — the string content `"5"` serializes to `"5"`
+///   (with quotes) while the number content `5` serializes to `5` (without),
+///   so they are no longer treated as the same message. The same holds for
+///   `"true"`/`true` and `"null"`/`null`.
+/// * **Delimiter collisions** — a literal-delimiter scheme such as
+///   `format!("{role}:{content}")` makes `role="user", content="a:b"` and
+///   `role="user:a", content="b"` indistinguishable. JSON encodes the field
+///   boundaries explicitly, so distinct messages always map to distinct keys.
+///
+/// A missing `role` is treated as JSON `null`, and a missing `content` is
+/// treated as JSON `null`, matching the previous "absent == empty" behavior
+/// for keying purposes while keeping the two fields unambiguous.
 fn message_key(msg: &Value) -> String {
-    let role = msg.get("role").and_then(|r| r.as_str()).unwrap_or("");
-    let content = match msg.get("content") {
-        Some(Value::String(s)) => s.clone(),
-        Some(other) => other.to_string(),
-        None => String::new(),
-    };
-    format!("{}:{}", role, content)
+    let role = msg.get("role").unwrap_or(&Value::Null);
+    let content = msg.get("content").unwrap_or(&Value::Null);
+    // serde_json serialization of a fixed-shape value is infallible.
+    serde_json::to_string(&[role, content]).unwrap_or_default()
 }
 
 /// Remove repeated messages according to the given [`DedupScope`].
@@ -389,5 +404,50 @@ mod tests {
         let msgs = vec![json!({"role": "assistant", "content": null, "tool_calls": []})];
         // An empty tool_calls array is not a real payload, so it is dropped.
         assert!(remove_empty(msgs).is_empty());
+    }
+
+    #[test]
+    fn string_and_number_content_are_distinct() {
+        // Regression: previously both keyed to "user:5" and collapsed into one.
+        let msgs = vec![
+            json!({"role": "user", "content": "5"}),
+            json!({"role": "user", "content": 5}),
+        ];
+        assert_eq!(dedup_global(msgs.clone()).len(), 2);
+        assert_eq!(duplicate_count(&msgs), 0);
+    }
+
+    #[test]
+    fn string_and_bool_content_are_distinct() {
+        let msgs = vec![
+            json!({"role": "user", "content": "true"}),
+            json!({"role": "user", "content": true}),
+        ];
+        assert_eq!(dedup_global(msgs).len(), 2);
+    }
+
+    #[test]
+    fn delimiter_collision_is_avoided() {
+        // Regression: `format!("{role}:{content}")` made these two distinct
+        // messages share the key "user:a:b".
+        let msgs = vec![
+            json!({"role": "user", "content": "a:b"}),
+            json!({"role": "user:a", "content": "b"}),
+        ];
+        assert_eq!(dedup_global(msgs).len(), 2);
+    }
+
+    #[test]
+    fn identical_string_content_still_deduped() {
+        // The fix must not regress the ordinary case.
+        let msgs = vec![u("hi"), u("hi")];
+        assert_eq!(dedup_global(msgs).len(), 1);
+    }
+
+    #[test]
+    fn identical_structured_content_still_deduped() {
+        let blocks = json!({"role": "user", "content": [{"type": "text", "text": "hi"}]});
+        let msgs = vec![blocks.clone(), blocks];
+        assert_eq!(dedup_global(msgs).len(), 1);
     }
 }

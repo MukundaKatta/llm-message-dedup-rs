@@ -70,3 +70,16 @@ fn dedup_scope_is_copy_and_comparable() {
     assert_eq!(scope, also);
     assert_ne!(DedupScope::Adjacent, DedupScope::Global);
 }
+
+#[test]
+fn content_type_is_significant() {
+    // A string "5" and the number 5 are different JSON values and must not be
+    // collapsed into one message.
+    let msgs = vec![
+        json!({"role": "user", "content": "5"}),
+        json!({"role": "user", "content": 5}),
+        json!({"role": "user", "content": "5"}), // exact repeat of the first
+    ];
+    assert_eq!(unique_count(&msgs), 2);
+    assert_eq!(dedup_global(msgs).len(), 2);
+}
